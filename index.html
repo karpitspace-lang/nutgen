@@ -15,9 +15,9 @@
         label { display: block; font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; }
         select, input { width: 100%; padding: 12px; background: #1a1a1a; color: var(--accent); border: 1px solid #333; outline: none; }
         .actions { padding: 20px; background: #0d0d0d; }
-        button { width: 100%; padding: 15px; background: var(--accent); color: black; border: none; cursor: pointer; font-weight: bold; }
+        button { width: 100%; padding: 15px; background: var(--accent); color: black; border: none; cursor: pointer; font-weight: bold; width: 100%; }
         #main-view { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
-        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: var(--accent); }
+        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: var(--accent); text-align: center; }
         #console { height: 180px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; font-family: monospace; }
         .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -26,7 +26,7 @@
 <body>
 
     <div id="sidebar">
-        <div class="header"><h1>NUTGEN</h1><div style="font-size:10px; color:#666;">V1.1.0 // RENAMED ENGINE</div></div>
+        <div class="header"><h1>NUTGEN</h1><div style="font-size:10px; color:#666;">V1.1.0 // FIXED FILENAME LOGIC</div></div>
         <div class="controls">
             <div class="control-item">
                 <label>Nominal Size</label>
@@ -34,10 +34,7 @@
                     <option value="M3" selected>M3</option>
                     <option value="M4">M4</option>
                     <option value="M5">M5</option>
-                    <option value="M6">M6</option>
                     <option value="M8">M8</option>
-                    <option value="M10">M10</option>
-                    <option value="M12">M12</option>
                 </select>
             </div>
             <div class="control-item">
@@ -65,24 +62,38 @@
 
         async function init() {
             try {
-                logger("LOCATING RENAMED WASM...");
+                logger("DETERMINING BASE PATH...");
+                // Get the exact folder URL where this file lives
+                const url = new URL(window.location.href);
+                const base = url.origin + url.pathname.substring(0, url.pathname.lastIndexOf('/') + 1);
+                
+                logger("LOADING ENGINE...");
                 scad = await openScad({
                     noInitialRun: true,
                     locateFile: (path) => {
-                        // This intercepts the search for the engine 
-                        // and points it to your renamed 'openscad.wasm'
+                        // Force redirect any request for the engine to your renamed file
                         if (path.endsWith('.wasm.js') || path.endsWith('.wasm')) {
-                            return "openscad.wasm"; 
+                            const target = base + "openscad.wasm";
+                            console.log("Redirecting engine request to:", target);
+                            return target; 
                         }
-                        return path;
-                    }
+                        return base + path;
+                    },
+                    mainScriptUrlOrBlob: base + "openscad.js"
                 });
+
                 logger("SUCCESS: ENGINE ONLINE.");
                 previewOnly(); 
             } catch (e) {
-                console.error(e);
-                logger("CRITICAL ERROR: WASM FILE NOT FOUND.");
-                document.getElementById('viewer').innerHTML = "ERROR: CHECK FILENAMES IN REPO";
+                console.error("BOOT ERROR:", e);
+                logger("CRITICAL ERROR: ENGINE NOT FOUND.");
+                document.getElementById('viewer').innerHTML = `
+                    <div style="color: #ff4444;">
+                        <h3>WASM LOAD FAILED</h3>
+                        <p>1. Check if <b>openscad.wasm</b> is in repo</p>
+                        <p>2. Check if <b>openscad.js</b> is in repo</p>
+                        <p>See F12 Console for details</p>
+                    </div>`;
             }
         }
 
@@ -94,23 +105,30 @@
 
             try {
                 const resp = await fetch(`./nut_generator.scad`);
-                if (!resp.ok) throw new Error("SCAD Missing");
+                if (!resp.ok) throw new Error("SCAD file missing from GitHub");
                 const rawScript = await resp.text();
                 
                 const finalScript = `Nut_Size = "${size}";\nTolerance = ${tol};\n${rawScript}`;
                 
+                // Save to virtual filesystem
                 scad.FS.writeFile("/input.scad", finalScript);
+                
+                // Render the 3D geometry
                 await scad.render("/input.scad", "/output.stl"); 
                 
-                document.getElementById('viewer').innerHTML = `<h2 style="color:#00ff41">${size} GENERATED</h2><p>Geometry computed at ${tol}mm</p>`;
-                logger("SUCCESS.");
+                document.getElementById('viewer').innerHTML = `
+                    <h2 style="color:#00ff41">${size} GENERATED</h2>
+                    <p style="font-size:12px;">Computed at ${tol}mm Tolerance</p>`;
+                logger("READY.");
             } catch (err) {
                 logger(`RENDER ERROR: ${err.message}`);
+                console.error(err);
             }
         }
 
         async function generateAndDownload() {
             try {
+                logger("PREPARING EXPORT...");
                 const stlData = scad.FS.readFile("/output.stl");
                 const blob = new Blob([stlData], {type: 'application/sla'});
                 const a = document.createElement('a');
@@ -118,7 +136,10 @@
                 a.download = `NUTGEN.stl`;
                 a.click();
                 logger("DOWNLOADED.");
-            } catch (e) { logger("EXPORT FAILED."); }
+            } catch (e) { 
+                logger("EXPORT FAILED."); 
+                console.error(e);
+            }
         }
 
         init();
