@@ -1,13 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="https://karpitspace-lang.github.io/nutgen/coi-serviceworker.js"></script>
     <title>NUTGEN | Parametric Nut Generator</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root { --accent: #00ff41; --bg-dark: #0a0a0a; --panel: #141414; --text: #e0e0e0; }
-        body { margin: 0; font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; background: var(--bg-dark); color: var(--text); }
+        body { margin: 0; font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; background: var(--bg-dark); color: var(--text); overflow: hidden; }
         
         #sidebar { width: 350px; background: var(--panel); border-right: 1px solid #333; display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.5); z-index: 10; }
         .header { padding: 30px 20px; border-bottom: 1px solid #222; text-align: center; }
@@ -22,7 +21,6 @@
             width: 100%; padding: 12px; background: #1a1a1a; color: var(--accent); 
             border: 1px solid #333; border-radius: 2px; font-family: monospace; outline: none; box-sizing: border-box;
         }
-        select:focus, input:focus { border-color: var(--accent); }
 
         .actions { padding: 20px; border-top: 1px solid #222; background: #0d0d0d; }
         button { 
@@ -33,10 +31,8 @@
         button:hover { background: #00cc33; box-shadow: 0 0 15px rgba(0,255,65,0.4); }
 
         #main-view { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
-        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: #444; font-size: 12px; text-align: center; padding: 20px; }
-        #console { height: 150px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; font-family: monospace; }
-        
-        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 5; display: none; }
+        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: #444; font-size: 14px; text-align: center; }
+        #console { height: 180px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; font-family: monospace; }
     </style>
 </head>
 <body>
@@ -44,13 +40,13 @@
     <div id="sidebar">
         <div class="header">
             <h1>NUTGEN</h1>
-            <div class="version">V1.0.0 // NUT GENERATOR</div>
+            <div class="version">V1.0.1 // ST-KERNEL</div>
         </div>
 
         <div class="controls">
             <div class="control-item">
                 <label>Nominal Size (DIN 934)</label>
-                <select id="Nut_Size" onchange="generate()">
+                <select id="Nut_Size">
                     <option value="M3">M3 (Metric)</option>
                     <option value="M4">M4 (Metric)</option>
                     <option value="M5">M5 (Metric)</option>
@@ -63,30 +59,31 @@
 
             <div class="control-item">
                 <label>Printer Tolerance (mm)</label>
-                <input type="number" id="Tolerance" value="0.15" step="0.01" onchange="generate()">
+                <input type="number" id="Tolerance" value="0.15" step="0.01">
             </div>
         </div>
 
         <div class="actions">
-            <button onclick="downloadSTL()">Generate & Download STL</button>
+            <button id="btn-generate" onclick="generateAndDownload()">Generate & Download STL</button>
         </div>
     </div>
 
     <div id="main-view">
         <div id="viewer">
-            [ 3D PREVIEW ENGINE INITIALIZING... ]<br><br>
-            Select a size and click Generate to produce the STL binary.
+            [ ENGINE READY ]<br><br>
+            Configure parameters and click "Generate"<br>
+            The STL will download automatically upon completion.
         </div>
         <div id="console">
-            > SYSTEM BOOTING...<br>
-            > CONNECTING TO WASM KERNEL...
+            > SYSTEM INITIALIZING...<br>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.st.min.js"></script>
+    
     <script>
         let scad;
-        const FILE_NAME = "nut_generator.scad"; // Matches your file exactly
+        const FILE_NAME = "nut_generator.scad";
 
         const logger = (msg) => {
             const c = document.getElementById('console');
@@ -96,69 +93,59 @@
 
         async function init() {
             try {
-                scad = await openScad();
+                logger("LOADING ST-WASM KERNEL...");
+                scad = await openScad({
+                    noInitialRun: true,
+                    locateFile: (path) => `https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/${path}`
+                });
                 logger("KERNEL LOADED SUCCESSFULLY.");
-                logger(`TARGET FILE: ${FILE_NAME}`);
-                generate();
+                logger("READY FOR INPUT.");
             } catch (e) {
-                logger("ERROR: FAILED TO LOAD ENGINE.");
+                logger("ERROR: KERNEL FAILED TO LOAD.");
+                console.error(e);
             }
         }
 
-        async function generate() {
+        async function generateAndDownload() {
             const size = document.getElementById('Nut_Size').value;
             const tol = document.getElementById('Tolerance').value;
-            
-            logger(`COMPILING GEOMETRY: ${size}...`);
-            
+            const btn = document.getElementById('btn-generate');
+
+            btn.disabled = true;
+            btn.innerHTML = "PROCESSING...";
+            logger(`FETCHING BLUEPRINT: ${FILE_NAME}`);
+
             try {
-                const resp = await fetch(FILE_NAME);
+                const resp = await fetch(`./${FILE_NAME}`);
                 if (!resp.ok) throw new Error("File not found");
-                
                 const rawScript = await resp.text();
                 
-                // Override the variables at the top of your .scad file
+                // Inject parameters
                 const finalScript = `Nut_Size = "${size}";\nTolerance = ${tol};\n${rawScript}`;
                 
+                logger("RENDERING 3D GEOMETRY...");
                 await scad.setScript(finalScript);
-                await scad.render();
-                logger(`STATUS: ${size} COMPILED.`);
-            } catch (err) {
-                logger(`ERROR: COULD NOT READ ${FILE_NAME}. CHECK FILENAME CASE.`);
-            }
-        }
-
-        async function downloadSTL() {
-            logger("GENERATING STL BINARY...");
-            try {
-                const data = await scad.getSTL();
-                const blob = new Blob([data], {type: 'application/sla'});
+                
+                logger("GENERATING STL BINARY...");
+                const stlData = await scad.getSTL();
+                
+                const blob = new Blob([stlData], {type: 'application/sla'});
                 const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `NUTGEN_${document.getElementById('Nut_Size').value}.stl`;
-                link.click();
-                logger("DOWNLOAD SUCCESSFUL.");
-            } catch (e) {
-                logger("ERROR: EXPORT FAILED.");
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `NUTGEN_${size}.stl`;
+                a.click();
+                
+                logger(`SUCCESS: ${size} DOWNLOADED.`);
+            } catch (err) {
+                logger(`ERROR: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "Generate & Download STL";
             }
         }
 
-        async function init() {
-    try {
-        // Wait 1 second to let the Service Worker settle
-        logger("WAITING FOR SECURITY HANDSHAKE...");
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        scad = await openScad();
-        logger("KERNEL LOADED SUCCESSFULLY.");
-        logger(`TARGET FILE: ${FILE_NAME}`);
-        generate();
-    } catch (e) {
-        logger("ERROR: WASM KERNEL BLOCKED.");
-        logger("PRO TIP: TRY REFRESHING THE PAGE (CTRL+F5).");
-    }
-}
+        init();
     </script>
 </body>
 </html>
