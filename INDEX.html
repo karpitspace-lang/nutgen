@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>NUTGEN | Parametric Nut Generator</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root { --accent: #00ff41; --bg-dark: #0a0a0a; --panel: #141414; --text: #e0e0e0; }
+        body { margin: 0; font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; background: var(--bg-dark); color: var(--text); }
+        
+        /* Sidebar Styling */
+        #sidebar { width: 350px; background: var(--panel); border-right: 1px solid #333; display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
+        .header { padding: 30px 20px; border-bottom: 1px solid #222; text-align: center; }
+        h1 { margin: 0; font-size: 32px; color: var(--accent); letter-spacing: 4px; text-shadow: 0 0 10px rgba(0,255,65,0.3); }
+        .version { font-size: 10px; color: #666; letter-spacing: 2px; }
+
+        .controls { padding: 25px; flex-grow: 1; }
+        .control-item { margin-bottom: 25px; }
+        label { display: block; font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; }
+        
+        select, input { 
+            width: 100%; padding: 12px; background: #1a1a1a; color: var(--accent); 
+            border: 1px solid #333; border-radius: 2px; font-family: monospace; outline: none;
+        }
+        select:focus, input:focus { border-color: var(--accent); }
+
+        /* Action Buttons */
+        .actions { padding: 20px; border-top: 1px solid #222; background: #0d0d0d; }
+        button { 
+            width: 100%; padding: 15px; background: var(--accent); color: black; 
+            border: none; font-weight: bold; cursor: pointer; text-transform: uppercase;
+            transition: 0.2s; border-radius: 2px; font-size: 14px;
+        }
+        button:hover { background: #00cc33; box-shadow: 0 0 15px rgba(0,255,65,0.4); }
+
+        /* Viewer & Console */
+        #main-view { flex-grow: 1; display: flex; flex-direction: column; }
+        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: #444; }
+        #console { height: 120px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <h1>NUTGEN</h1>
+            <div class="version">V1.0.0 // DIN 934</div>
+        </div>
+
+        <div class="controls">
+            <div class="control-item">
