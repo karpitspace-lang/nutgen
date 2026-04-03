@@ -43,7 +43,7 @@
     <div id="sidebar">
         <div class="header">
             <h1>NUTGEN</h1>
-            <div class="version">V1.1.0 // ENGINE 0.0.4</div>
+            <div class="version">V1.1.0 // CLOUD-ENGINE 0.0.4</div>
         </div>
 
         <div class="controls">
@@ -75,7 +75,7 @@
         <div id="viewer">
             <div>
                 <div class="spinner"></div>
-                Initializing 3D Engine...
+                Connecting to 3D Engine...
             </div>
         </div>
         <div id="console">
@@ -83,7 +83,7 @@
         </div>
     </div>
 
-    <script src="openscad.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js"></script>
     
     <script>
         let scad;
@@ -97,26 +97,21 @@
 
         async function init() {
             try {
-                logger("LOADING 0.0.4 ENGINE MODULE...");
+                logger("PULLING ENGINE FROM CDN...");
                 
-                // Optimized for the 0.0.4 "split" architecture
+                // This uses the CDN links to ensure the .wasm file is found
                 scad = await openScad({
                     noInitialRun: true,
-                    locateFile: (path) => {
-                        if (path.endsWith('openscad.wasm.js') || path.endsWith('.wasm')) {
-                            return "openscad.wasm.js";
-                        }
-                        return path;
-                    },
-                    mainScriptUrlOrBlob: "openscad.js"
+                    locateFile: (path) => `https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/${path}`,
+                    mainScriptUrlOrBlob: "https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js"
                 });
 
-                logger("KERNEL ONLINE. V0.0.4 LOADED.");
+                logger("SYSTEM ONLINE. READY FOR COMPUTATION.");
                 previewOnly(); 
             } catch (e) {
                 console.error(e);
-                logger("ERROR: KERNEL FAILED.");
-                document.getElementById('viewer').innerHTML = "CRITICAL ERROR: WASM ENGINE NOT FOUND";
+                logger("CRITICAL ERROR: ENGINE BLOCKED BY BROWSER.");
+                document.getElementById('viewer').innerHTML = "ERROR: PLEASE REFRESH OR CHECK INTERNET";
             }
         }
 
@@ -126,30 +121,28 @@
             const size = document.getElementById('Nut_Size').value;
             const tol = document.getElementById('Tolerance').value;
             
-            logger(`COMPUTING: ${size}...`);
-            document.getElementById('viewer').innerHTML = `<div><div class="spinner"></div>GENERATING ${size} PREVIEW...</div>`;
+            logger(`RECALCULATING: ${size}...`);
+            document.getElementById('viewer').innerHTML = `<div><div class="spinner"></div>COMPUTING ${size}...</div>`;
 
             try {
+                // Fetch your local .scad file from your GitHub Repo
                 const resp = await fetch(`./${FILE_NAME}`);
-                if (!resp.ok) throw new Error("SCAD File Not Found");
+                if (!resp.ok) throw new Error("SCAD File Missing in Repo");
                 const rawScript = await resp.text();
                 
                 const finalScript = `Nut_Size = "${size}";\nTolerance = ${tol};\n${rawScript}`;
                 
-                // Compatibility check for 0.0.4 method naming
-                if (scad.setScript) {
-                    await scad.setScript(finalScript);
-                } else {
-                    scad.FS.writeFile("/input.scad", finalScript);
-                }
+                // Write the script to the virtual filesystem
+                scad.FS.writeFile("/input.scad", finalScript);
                 
-                await scad.render(); 
+                // Run the OpenSCAD render engine
+                await scad.render("/input.scad", "/output.stl"); 
                 
-                document.getElementById('viewer').innerHTML = `<div><h2 style="color:#00ff41">GEOMETRY READY</h2><p>${size} Model Computed Successfully</p></div>`;
-                logger(`STATUS: ${size} READY.`);
+                document.getElementById('viewer').innerHTML = `<div><h2 style="color:#00ff41">GEOMETRY COMPUTED</h2><p>${size} Nut at ${tol}mm Tolerance</p></div>`;
+                logger(`SUCCESS: ${size} RENDERED.`);
             } catch (err) {
-                logger(`ERROR: ${err.message}`);
-                document.getElementById('viewer').innerHTML = "ERROR LOADING .SCAD FILE";
+                logger(`RENDER ERROR: ${err.message}`);
+                document.getElementById('viewer').innerHTML = "ERROR IN SCAD SCRIPT";
             }
         }
 
@@ -157,20 +150,21 @@
             const size = document.getElementById('Nut_Size').value;
             const btn = document.getElementById('btn-generate');
             btn.disabled = true;
-            btn.innerHTML = "EXPORTING...";
+            btn.innerHTML = "GENERATING STL...";
 
             try {
-                logger("EXTRACTING STL BINARY...");
-                const stlData = await scad.getSTL();
+                logger("EXPORTING STL...");
+                // OpenSCAD-WASM 0.0.4 usually puts the file in the virtual FS
+                const stlData = scad.FS.readFile("/output.stl");
                 const blob = new Blob([stlData], {type: 'application/sla'});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `NUTGEN_${size}.stl`;
                 a.click();
-                logger("DOWNLOAD STARTED.");
+                logger("DOWNLOAD READY.");
             } catch (e) {
-                logger("EXPORT FAILED.");
+                logger("EXPORT FAILED. CHECK CONSOLE.");
                 console.error(e);
             } finally {
                 btn.disabled = false;
@@ -178,6 +172,7 @@
             }
         }
 
+        // Start the engine
         init();
     </script>
 </body>
