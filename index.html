@@ -34,7 +34,6 @@
         #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 14px; text-align: center; }
         #console { height: 180px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; font-family: monospace; }
         
-        /* Simple spinner for loading */
         .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
@@ -44,7 +43,7 @@
     <div id="sidebar">
         <div class="header">
             <h1>NUTGEN</h1>
-            <div class="version">V1.1.0 // AUTO-RENDER</div>
+            <div class="version">V1.1.0 // ENGINE 0.0.4</div>
         </div>
 
         <div class="controls">
@@ -84,7 +83,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.st.min.js"></script>
+    <script src="openscad.js"></script>
     
     <script>
         let scad;
@@ -98,25 +97,36 @@
 
         async function init() {
             try {
-                logger("LOADING ST-WASM KERNEL...");
+                logger("LOADING 0.0.4 ENGINE MODULE...");
+                
+                // Optimized for the 0.0.4 "split" architecture
                 scad = await openScad({
                     noInitialRun: true,
-                    locateFile: (path) => `https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/${path}`
+                    locateFile: (path) => {
+                        if (path.endsWith('openscad.wasm.js') || path.endsWith('.wasm')) {
+                            return "openscad.wasm.js";
+                        }
+                        return path;
+                    },
+                    mainScriptUrlOrBlob: "openscad.js"
                 });
-                logger("KERNEL ONLINE.");
-                // AUTO-START THE FIRST PREVIEW
+
+                logger("KERNEL ONLINE. V0.0.4 LOADED.");
                 previewOnly(); 
             } catch (e) {
+                console.error(e);
                 logger("ERROR: KERNEL FAILED.");
-                document.getElementById('viewer').innerHTML = "CRITICAL ERROR: WASM BLOCKED";
+                document.getElementById('viewer').innerHTML = "CRITICAL ERROR: WASM ENGINE NOT FOUND";
             }
         }
 
         async function previewOnly() {
+            if(!scad) return;
+
             const size = document.getElementById('Nut_Size').value;
             const tol = document.getElementById('Tolerance').value;
             
-            logger(`PREVIEWING: ${size}...`);
+            logger(`COMPUTING: ${size}...`);
             document.getElementById('viewer').innerHTML = `<div><div class="spinner"></div>GENERATING ${size} PREVIEW...</div>`;
 
             try {
@@ -126,8 +136,13 @@
                 
                 const finalScript = `Nut_Size = "${size}";\nTolerance = ${tol};\n${rawScript}`;
                 
-                await scad.setScript(finalScript);
-                // In this basic WASM version, we "render" to verify it's valid
+                // Compatibility check for 0.0.4 method naming
+                if (scad.setScript) {
+                    await scad.setScript(finalScript);
+                } else {
+                    scad.FS.writeFile("/input.scad", finalScript);
+                }
+                
                 await scad.render(); 
                 
                 document.getElementById('viewer').innerHTML = `<div><h2 style="color:#00ff41">GEOMETRY READY</h2><p>${size} Model Computed Successfully</p></div>`;
@@ -156,6 +171,7 @@
                 logger("DOWNLOAD STARTED.");
             } catch (e) {
                 logger("EXPORT FAILED.");
+                console.error(e);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = "Generate & Download STL";
