@@ -8,11 +8,10 @@
         :root { --accent: #00ff41; --bg-dark: #0a0a0a; --panel: #141414; --text: #e0e0e0; }
         body { margin: 0; font-family: 'Courier New', Courier, monospace; display: flex; height: 100vh; background: var(--bg-dark); color: var(--text); }
         
-        /* Sidebar Styling */
-        #sidebar { width: 350px; background: var(--panel); border-right: 1px solid #333; display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.5); }
+        #sidebar { width: 350px; background: var(--panel); border-right: 1px solid #333; display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.5); z-index: 10; }
         .header { padding: 30px 20px; border-bottom: 1px solid #222; text-align: center; }
         h1 { margin: 0; font-size: 32px; color: var(--accent); letter-spacing: 4px; text-shadow: 0 0 10px rgba(0,255,65,0.3); }
-        .version { font-size: 10px; color: #666; letter-spacing: 2px; }
+        .version { font-size: 10px; color: #666; letter-spacing: 2px; margin-top: 5px; }
 
         .controls { padding: 25px; flex-grow: 1; }
         .control-item { margin-bottom: 25px; }
@@ -20,11 +19,10 @@
         
         select, input { 
             width: 100%; padding: 12px; background: #1a1a1a; color: var(--accent); 
-            border: 1px solid #333; border-radius: 2px; font-family: monospace; outline: none;
+            border: 1px solid #333; border-radius: 2px; font-family: monospace; outline: none; box-sizing: border-box;
         }
         select:focus, input:focus { border-color: var(--accent); }
 
-        /* Action Buttons */
         .actions { padding: 20px; border-top: 1px solid #222; background: #0d0d0d; }
         button { 
             width: 100%; padding: 15px; background: var(--accent); color: black; 
@@ -33,10 +31,11 @@
         }
         button:hover { background: #00cc33; box-shadow: 0 0 15px rgba(0,255,65,0.4); }
 
-        /* Viewer & Console */
-        #main-view { flex-grow: 1; display: flex; flex-direction: column; }
-        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: #444; }
-        #console { height: 120px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; }
+        #main-view { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+        #viewer { flex-grow: 1; background: #111; display: flex; align-items: center; justify-content: center; color: #444; font-size: 12px; text-align: center; padding: 20px; }
+        #console { height: 150px; background: #050505; border-top: 1px solid #222; padding: 15px; font-size: 12px; color: #008f11; overflow-y: auto; line-height: 1.5; font-family: monospace; }
+        
+        .loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 5; display: none; }
     </style>
 </head>
 <body>
@@ -44,8 +43,107 @@
     <div id="sidebar">
         <div class="header">
             <h1>NUTGEN</h1>
-            <div class="version">V1.0.0 // DIN 934</div>
+            <div class="version">V1.0.0 // NUT GENERATOR</div>
         </div>
 
         <div class="controls">
             <div class="control-item">
+                <label>Nominal Size (DIN 934)</label>
+                <select id="Nut_Size" onchange="generate()">
+                    <option value="M3">M3 (Metric)</option>
+                    <option value="M4">M4 (Metric)</option>
+                    <option value="M5">M5 (Metric)</option>
+                    <option value="M6">M6 (Metric)</option>
+                    <option value="M8">M8 (Metric)</option>
+                    <option value="M10">M10 (Metric)</option>
+                    <option value="M12">M12 (Metric)</option>
+                </select>
+            </div>
+
+            <div class="control-item">
+                <label>Printer Tolerance (mm)</label>
+                <input type="number" id="Tolerance" value="0.15" step="0.01" onchange="generate()">
+            </div>
+        </div>
+
+        <div class="actions">
+            <button onclick="downloadSTL()">Generate & Download STL</button>
+        </div>
+    </div>
+
+    <div id="main-view">
+        <div id="viewer">
+            [ 3D PREVIEW ENGINE INITIALIZING... ]<br><br>
+            Select a size and click Generate to produce the STL binary.
+        </div>
+        <div id="console">
+            > SYSTEM BOOTING...<br>
+            > CONNECTING TO WASM KERNEL...
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.min.js"></script>
+    <script>
+        let scad;
+        const FILE_NAME = "nut_generator.scad"; // Matches your file exactly
+
+        const logger = (msg) => {
+            const c = document.getElementById('console');
+            c.innerHTML += `> ${msg}<br>`;
+            c.scrollTop = c.scrollHeight;
+        };
+
+        async function init() {
+            try {
+                scad = await openScad();
+                logger("KERNEL LOADED SUCCESSFULLY.");
+                logger(`TARGET FILE: ${FILE_NAME}`);
+                generate();
+            } catch (e) {
+                logger("ERROR: FAILED TO LOAD ENGINE.");
+            }
+        }
+
+        async function generate() {
+            const size = document.getElementById('Nut_Size').value;
+            const tol = document.getElementById('Tolerance').value;
+            
+            logger(`COMPILING GEOMETRY: ${size}...`);
+            
+            try {
+                const resp = await fetch(FILE_NAME);
+                if (!resp.ok) throw new Error("File not found");
+                
+                const rawScript = await resp.text();
+                
+                // Override the variables at the top of your .scad file
+                const finalScript = `Nut_Size = "${size}";\nTolerance = ${tol};\n${rawScript}`;
+                
+                await scad.setScript(finalScript);
+                await scad.render();
+                logger(`STATUS: ${size} COMPILED.`);
+            } catch (err) {
+                logger(`ERROR: COULD NOT READ ${FILE_NAME}. CHECK FILENAME CASE.`);
+            }
+        }
+
+        async function downloadSTL() {
+            logger("GENERATING STL BINARY...");
+            try {
+                const data = await scad.getSTL();
+                const blob = new Blob([data], {type: 'application/sla'});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `NUTGEN_${document.getElementById('Nut_Size').value}.stl`;
+                link.click();
+                logger("DOWNLOAD SUCCESSFUL.");
+            } catch (e) {
+                logger("ERROR: EXPORT FAILED.");
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
