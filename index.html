@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script src="coi-serviceworker.js"></script>
+    <script src="./coi-serviceworker.js"></script>
     <title>NUTGEN | Parametric Nut Generator</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -144,7 +144,21 @@
             }
         }
 
-        init();
+        async function init() {
+    try {
+        // Wait 1 second to let the Service Worker settle
+        logger("WAITING FOR SECURITY HANDSHAKE...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        scad = await openScad();
+        logger("KERNEL LOADED SUCCESSFULLY.");
+        logger(`TARGET FILE: ${FILE_NAME}`);
+        generate();
+    } catch (e) {
+        logger("ERROR: WASM KERNEL BLOCKED.");
+        logger("PRO TIP: TRY REFRESHING THE PAGE (CTRL+F5).");
+    }
+}
     </script>
 </body>
 </html>
