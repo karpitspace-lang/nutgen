@@ -3,15 +3,13 @@
 <head>
     <title>Nutgen Customizer</title>
     <style>
-        body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        iframe { border: none; flex-grow: 1; }
-        .header { padding: 10px; background: #333; color: white; text-align: center; }
+        body { margin: 0; padding: 0; overflow: hidden; font-family: sans-serif; }
+        #customizer-container { width: 100vw; height: 100vh; border: none; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Nutgen: DIN934 Hex Nut Generator</h1>
-    </div>
-    <iframe src="https://ochafik.com/openscad/?#https://raw.githubusercontent.com/karpitspace-lang/nutgen/main/nut_generator.scad"></iframe>
+    <iframe id="customizer-container" 
+        src="https://ochafik.com/openscad/?load=https://raw.githubusercontent.com/karpitspace-lang/nutgen/main/nut_generator.scad">
+    </iframe>
 </body>
 </html>
