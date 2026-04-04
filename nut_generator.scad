@@ -1,104 +1,90 @@
-/* [ Main Configuration ] */
+/* [Nut Selection] */
+// Select the standard DIN934 size
+M_Size = 6; // [3, 4, 5, 6, 8, 10, 12]
 
-// Select the standard ISO/DIN size
-Nut_Size = "M3"; // [M3, M4, M5, M6, M8, M10, M12]
+/* [Tolerances] */
+// Added to both Major and Minor diameters
+Diameter_Offset = 0.2; 
 
-// Extra clearance for 3D printing (0.1 to 0.2 is standard for FDM)
-Tolerance = 0.15; 
+/* [Rendering Quality] */
+// Smoothness of circular parts
+$fn = 64; 
 
-/* [ Thread Geometry ] */
+// --- DIN 934 Standard Data Lookup ---
+// Format: [M_size, Pitch, S_Flats, M_Height, D_Minor, Da_Chamfer]
+function din_data(m) = 
+    (m == 3)  ? [3,  0.5,  5.5,  2.4,  2.459,  3.45] :
+    (m == 4)  ? [4,  0.7,  7.0,  3.2,  3.242,  4.60] :
+    (m == 5)  ? [5,  0.8,  8.0,  4.0,  4.134,  5.75] :
+    (m == 6)  ? [6,  1.0,  10.0, 5.0,  4.917,  6.90] :
+    (m == 8)  ? [8,  1.25, 13.0, 6.5,  6.647,  9.20] :
+    (m == 10) ? [10, 1.5,  17.0, 8.0,  8.376,  11.50] :
+    (m == 12) ? [12, 1.75, 19.0, 10.0, 10.106, 14.00] : 
+    [3, 0.5, 5.5, 2.4, 2.459, 3.45]; // Default M3
 
-// 0 uses DIN standard pitch, >0 overrides for custom bolts
-Manual_Pitch = 0; 
+// --- Apply Parameters ---
+row        = din_data(M_Size);
+pitch      = row[1];
+s_flats    = row[2];
+m_height   = row[3];
+d_major    = row[0] + Diameter_Offset; 
+d_inner    = row[4] + Diameter_Offset; 
+da_chamfer = row[5]; 
 
-// Smoothness of the model (higher = better quality, slower render)
-Resolution = 64; // [32, 64, 128]
-
-/* [ Internal Calculations ] */
-
-// DIN 934 Data Table: [Size, Pitch, Flats(s), Height(m), Chamfer_Dia(da)]
-nut_data = [
-    ["M3",  0.5,  5.5,  2.4, 3.45],
-    ["M4",  0.7,  7.0,  3.2, 4.60],
-    ["M5",  0.8,  8.0,  4.0, 5.75],
-    ["M6",  1.0,  10.0, 5.0, 6.75],
-    ["M8",  1.25, 13.0, 6.5, 9.20],
-    ["M10", 1.5,  17.0, 8.0, 11.5],
-    ["M12", 1.75, 19.0, 10.0, 14.0]
-];
-
-// Lookup logic
-function get_data(size) = nut_data[search([size], nut_data)[0]];
-
-p_std     = get_data(Nut_Size)[1];
-pitch     = (Manual_Pitch > 0) ? Manual_Pitch : p_std;
-s_flats   = get_data(Nut_Size)[2];
-m_height  = get_data(Nut_Size)[3];
-da_cham   = get_data(Nut_Size)[4];
-
-// Derived Dimensions
-d_major = pi_to_num(Nut_Size) + Tolerance; 
-d_inner = d_major - (pitch * 1.0825); 
 hex_points_dia = s_flats / cos(30);
-chamfer_h = (da_cham - d_inner) / 2;
+chamfer_h = (da_chamfer - d_inner) / 2; 
 
-$fn = Resolution;
-
-// Helper to convert "M3" string to number 3
-function pi_to_num(s) = 
-    (s=="M3")?3:(s=="M4")?4:(s=="M5")?5:(s=="M6")?6:(s=="M8")?8:(s=="M10")?10:12;
-
-/* [ Rendering ] */
-
-render_nut();
-
-module render_nut() {
-    difference() {
-        // 1. OUTER HEX WITH DOUBLE CHAMFER
-        intersection() {
-            cylinder(h = m_height, d = hex_points_dia, $fn = 6, center = true);
-            union() {
-                cylinder(h = m_height/2, d1 = hex_points_dia + 1, d2 = s_flats, center = false);
-                mirror([0, 0, 1])
-                    cylinder(h = m_height/2, d1 = hex_points_dia + 1, d2 = s_flats, center = false);
-            }
-        }
-
-        // 2. INTERNAL HOLE + THREADS + 45deg CHAMFERS
+// --- Main Construction ---
+difference() {
+    // 1. THE CHAMFERED HEX BODY
+    intersection() {
+        cylinder(h = m_height, d = hex_points_dia, $fn = 6, center = true);
         union() {
-            // Core hole
-            cylinder(h = m_height + 0.2, d = d_inner, center = true);
-            
-            // Entry/Exit Chamfers
-            translate([0, 0, m_height/2 - chamfer_h + 0.01])
-                cylinder(h = chamfer_h, d1 = d_inner, d2 = da_cham);
-            translate([0, 0, -m_height/2 - 0.01])
-                cylinder(h = chamfer_h, d1 = da_cham, d2 = d_inner);
+            // Chamfering logic for the outer edges
+            cylinder(h = m_height/2, d1 = hex_points_dia + 1, d2 = s_flats, center = false);
+            mirror([0, 0, 1])
+                cylinder(h = m_height/2, d1 = hex_points_dia + 1, d2 = s_flats, center = false);
+        }
+    }
 
-            // Thread cutting tool
-            translate([0, 0, -m_height/2])
-            intersection() {
-                cylinder(h = m_height, d = d_major);
-                thread_generator(d_major, pitch, m_height, d_inner);
-            }
+    // 2. THE THREADED HOLE
+    union() {
+        // Main core hole
+        cylinder(h = m_height + 0.5, d = d_inner, center = true);
+        
+        // Entry Chamfers (45 deg)
+        translate([0, 0, m_height/2 - chamfer_h + 0.01])
+            cylinder(h = chamfer_h, d1 = d_inner, d2 = da_chamfer);
+            
+        translate([0, 0, -m_height/2 - 0.01])
+            cylinder(h = chamfer_h, d1 = da_chamfer, d2 = d_inner);
+
+        // The Thread Cutter
+        translate([0, 0, -m_height/2])
+        intersection() {
+            cylinder(h = m_height, d = d_major);
+            thread_tool(d_major, pitch, m_height, d_inner);
         }
     }
 }
 
-module thread_generator(dia, p, l, inner) {
+// --- Threading Modules ---
+module thread_tool(dia, p, l, d_in) {
     steps = 32; 
     total_steps = (l / p) * steps;
-    for (i = [0 : total_steps - 1]) {
+    // We add a few extra steps to ensure the thread clears the ends
+    for (i = [-steps : total_steps + steps]) {
         hull() {
-            thread_profile(i, steps, p, inner, dia);
-            thread_profile(i + 1, steps, p, inner, dia);
+            thread_pt(i, steps, p, d_in, dia);
+            thread_pt(i + 1, steps, p, d_in, dia);
         }
     }
 }
 
-module thread_profile(i, steps, p, inner, dia) {
+module thread_pt(i, steps, p, d_in, d_maj) {
     rotate([0, 0, i * (360/steps)])
-    translate([inner/2 + 0.05, 0, i * (p/steps)])
+    translate([d_in/2 - 0.1, 0, i * (p/steps)])
     rotate([90, 0, 0])
-    cylinder(h = (dia - inner) + 0.2, d1 = p * 1.1, d2 = 0, $fn = 3);
+    // Triangle cutter profile
+    cylinder(h = (d_maj - d_in) + 0.5, d1 = p * 1.1, d2 = 0, $fn = 3);
 }
